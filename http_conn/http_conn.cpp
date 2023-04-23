@@ -65,7 +65,7 @@ void http_conn::init()
     m_method = "GET";
     m_url = 0;
     m_version = 0;
-
+    m_linger = false;
     bzero(m_read_buff, READ_BUFFER_SIZE);
 }
 
@@ -176,7 +176,44 @@ http_conn::HTTP_CODE http_conn::process_read()
 http_conn::HTTP_CODE http_conn::prase_request_line(char * text)
 {
     // GET /index.html HTTP/1.1
+    m_url = strpbrk(text, " \t");
+    *m_url++ = '\0';
+    // GET\0/index.html HTTP/1.1
+    char * method = text;
+    if (strcasecmp(method, "GET") == 0)
+    {
+        m_method = "GET";
+    }
+    else
+    {
+        return BAD_REQUEST;
+    }
+    // /index.html HTTP/1.1
+    m_version = strpbrk(m_url, " \t");
 
+    if (!m_version)
+    {
+        return BAD_REQUEST;
+    }
+    *m_version++ = '\0';
+    // /index.html\0HTTP/1.1
+    if (strcasecmp(m_version, "HTTP/1.1") != 0)
+    {
+        return BAD_REQUEST;
+    }
+    // http://192.xxxxxxx/index.html
+    if (strncasecmp(m_url, "http://", 7) == 0)
+    {   
+        m_url += 7;
+        m_url = strchr(m_url, '/');
+    }
+
+    if (!m_url || m_url[0] != '/')
+    {
+        return BAD_REQUEST;
+    }
+    m_check_state = CHECK_STATE_HEADER;
+    return NO_REQUEST; // 还有header,body没解析,因此返回NO_REQUEST
 }
 
 http_conn::HTTP_CODE http_conn::prase_request_header(char * text)

@@ -82,6 +82,7 @@ private:
     char* m_version; // 协议版本，仅支持HTTP1.1
     char* m_method; // 请求方法
     char* m_host; // 主机名
+    bool m_linger; // 是否是keep-alive
  
     int m_checked_index; // 当前正在分析的字符在读缓冲区的位置
     int m_start_line; // 当前正在解析行的起始位置，第几行
