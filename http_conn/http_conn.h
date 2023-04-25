@@ -26,6 +26,7 @@ public:
     static int m_user_count; //统计用户数量
     static const int READ_BUFFER_SIZE = 2048; //读缓冲区大小
     static const int WRITE_BUFFER_SIZE = 2048; //写缓冲区大小
+    static const int FILENAME_LEN = 200;        // 文件名的最大长度
 
     // HTTP请求方法，这里只支持GET
     enum METHOD {GET = 0, POST, HEAD, PUT, DELETE, TRACE, OPTIONS, CONNECT};
@@ -77,16 +78,29 @@ private:
     char m_read_buff[READ_BUFFER_SIZE];
     char m_read_idx; //标识读缓冲区中以及读入的客户端数据的最后一个字节的下一个位置
     char m_write_buff[WRITE_BUFFER_SIZE];
+    char m_write_idx;
 
     char* m_url; // 请求目标文件的文件名
     char* m_version; // 协议版本，仅支持HTTP1.1
     char* m_method; // 请求方法
     char* m_host; // 主机名
     bool m_linger; // 是否是keep-alive
- 
+    int m_content_length; // 消息体字节数
+    char* m_file_address;                   // 客户请求的目标文件被mmap到内存中的起始位置
+    char m_real_file[ FILENAME_LEN ];       // 客户请求的目标文件的完整路径，其内容等于 doc_root + m_url, doc_root是网站根目录
+    struct stat m_file_stat;                // 目标文件的状态。通过它我们可以判断文件是否存在、是否为目录、是否可读，并获取文件大小等信息
+
     int m_checked_index; // 当前正在分析的字符在读缓冲区的位置
     int m_start_line; // 当前正在解析行的起始位置，第几行
     CHECK_STATE m_check_state; // 主状态机当前的状态
+
+    // 我们将采用writev来执行写操作，所以定义下面两个成员，其中m_iv_count表示被写内存块的数量。
+    // readv和writev函数的功能可以概括为：对数据进行整合传输以及发送。通过writev函数可以将
+    // 分散保存在多个buff的数据一并进行发送，通过readv可以由多个buff分别接受数据，适当的使用
+    // 这两个函数可以减少I/O函数的调用次数
+    struct iovec m_iv[2];    // 可以一次写多个内存快
+    // iov是iovec结构体数组，iovec结构体中包含了待发送buff的指针和大小信息。
+    int m_iv_count;
 
     void init(); // 初始化连接其余的数据
 
@@ -103,6 +117,27 @@ private:
     LINE_STATUS parse_line();
 
     HTTP_CODE do_request();
+
+    // 响应
+    bool process_write(HTTP_CODE ret);
+
+    void unmap();
+
+    bool add_response(const char* format, ...);
+
+    bool add_status_line(int status, const char* title);
+
+    bool add_content(const char* content);
+
+    void add_headers(int content_len);
+
+    bool add_content_length(int content_len);
+
+    bool add_content_type();
+
+    bool add_linger();
+
+    bool add_blank_line();
 
     // 获取一行数据
     char * get_line()
