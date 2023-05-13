@@ -1,11 +1,11 @@
 #ifndef THREADPOOL_H
 #define THREADPOOL_H
 
-#include<pthread>
+#include<pthread.h>
 #include<exception>
 #include<list>
 #include<iostream>
-#include "./locker/locker.h"
+#include "../locker/locker.h"
 
 // 线程池类, 定义成模板类，复用, 此项目中T类型是任务类
 template<typename T>
@@ -27,7 +27,7 @@ private:
     // 线程数量
     int m_thread_number;
     // 线程池数组
-    pthread* m_threads;
+    pthread_t* m_threads;
     // 请求队列中最多允许等待请求数量
     int m_max_requests;
     // 请求队列
@@ -38,7 +38,7 @@ private:
     sem m_queuestats;
     // 是否结束某线程
     bool m_stop;
-}
+};
 
 template<typename T>
 threadpool<T>::threadpool(int thread_num, int max_requests):
@@ -60,7 +60,7 @@ threadpool<T>::threadpool(int thread_num, int max_requests):
     {
         std::cout << "正在创建" << i+1 << "个线程" << std::endl;
         // worker函数是静态成员函数不能访问非静态成员变量，用this传入worker中实现访问
-        if (pthread_create(_threads + i, NULL, worker, this) != 0)
+        if (pthread_create(m_threads + i, NULL, worker, this) != 0)
         {
             delete [] m_threads;
             throw std::exception();
@@ -95,6 +95,7 @@ bool threadpool<T>::append(T* request)
     m_workqueue.push_back(request);
     m_queuelocker.unlock();
     m_queuestats.post();
+    return true;
 }
 
 template<typename T>

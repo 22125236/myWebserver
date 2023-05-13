@@ -76,13 +76,13 @@ private:
     int m_sockfd; // 这个HTTP连接的socket
     sockaddr_in m_address; //通信的socket地址
     char m_read_buff[READ_BUFFER_SIZE];
-    char m_read_idx; //标识读缓冲区中以及读入的客户端数据的最后一个字节的下一个位置
+    int m_read_idx; //标识读缓冲区中以及读入的客户端数据的最后一个字节的下一个位置
     char m_write_buff[WRITE_BUFFER_SIZE];
     char m_write_idx;
 
     char* m_url; // 请求目标文件的文件名
     char* m_version; // 协议版本，仅支持HTTP1.1
-    char* m_method; // 请求方法
+    METHOD m_method; // 请求方法
     char* m_host; // 主机名
     bool m_linger; // 是否是keep-alive
     int m_content_length; // 消息体字节数
@@ -101,6 +101,9 @@ private:
     struct iovec m_iv[2];    // 可以一次写多个内存快
     // iov是iovec结构体数组，iovec结构体中包含了待发送buff的指针和大小信息。
     int m_iv_count;
+
+    int bytes_to_send;      // 将要发送的数据的字节数
+    int bytes_have_send;    // 已经发送的字节数
 
     void init(); // 初始化连接其余的数据
 
