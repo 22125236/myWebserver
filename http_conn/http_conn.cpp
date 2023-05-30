@@ -178,6 +178,9 @@ http_conn::HTTP_CODE http_conn::prase_request_line(char * text)
 {
     // GET /index.html HTTP/1.1
     m_url = strpbrk(text, " \t");
+    if (!m_url) { // 如果这行没有肯定是有问题
+        return BAD_REQUEST;
+    }
     *m_url++ = '\0';
     // GET\0/index.html HTTP/1.1
     char * method = text;
