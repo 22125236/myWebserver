@@ -47,6 +47,7 @@ private:
     void init_tcp();
     void init_epoll();
     void init_pipe();
+    void init_sql();
     // 功能
     void lsttimer(int, struct sockaddr_in);
 
@@ -71,17 +72,18 @@ private:
     // 数据库 
     const char* sql_username;
     const char* sql_password;
-    char* databaseName;
+    const char* databaseName;
     int sql_port;
     int sql_num;
     char* m_sqlurl; // mysql的ip
     sql_conn_pool * conn_pool; // mysql连接池
 };
 
-server::server(int port_, const char* username, const char* password):port(port_), sql_username(username), sql_password(password)
+server::server(int port_, const char* username, const char* password):port(port_), sql_username(username), sql_password(password), databaseName("webserver")
 {
     addSig(SIGPIPE, SIG_IGN, false);
     init_threadpool();
+    init_sql();
     init_tcp();
     init_epoll();
     init_pipe();
@@ -238,6 +240,14 @@ void server::init_pipe()
     alarm(TIMESLOT); // 定时
     Utils::u_pipefd = pipefd;
     Utils::u_epollfd = epollfd;
+}
+
+void server::init_sql()
+{
+    printf("lianjie mysql...\n");
+    instance* corm = instance::GetInstance();
+    corm->init(sql_username, sql_password, databaseName);
+    printf("success\n");
 }
 
 void server::lsttimer(int connfd, struct sockaddr_in client_address)

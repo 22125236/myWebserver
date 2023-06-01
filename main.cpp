@@ -13,8 +13,8 @@ int main(int argc, char* argv[])
 
     //获取端口号
     int port = atoi(argv[1]);
-    const char* userName = "wwy";
-    const char* passWord = "123456";
+    const char* userName = "root";
+    const char* passWord = "123";
     server* s = new server(port, userName, passWord);
     s->start();
 

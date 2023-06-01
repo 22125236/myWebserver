@@ -20,7 +20,7 @@ void instance::init(std::string username, std::string password, std::string data
     sql_port = 3306;
     sql_conn_num = 8;
     conn_pool = sql_conn_pool::GetInstance();
-    conn_pool->init("mysql", sql_username, sql_password, sql_databaseName, sql_port, sql_conn_num);
+    conn_pool->init("localhost", sql_username, sql_password, sql_databaseName, sql_port, sql_conn_num);
 }
 
 int instance::insert_user(std::string username, std::string password)
