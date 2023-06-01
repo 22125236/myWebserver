@@ -9,6 +9,7 @@
 #include<assert.h>
 #include <fcntl.h>
 #include<signal.h>
+#include<stdio.h>
 
 // #define BUFFER_SIZE 64
 class util_timer;
@@ -142,7 +143,7 @@ public:
         printf("time tick\n");
         time_t cur = time(NULL); // 获取当前时间
         util_timer* tmp = head;
-        while (tmp)
+        while (tmp != NULL)
         {
             if (cur < tmp->expire)
             {
@@ -201,7 +202,7 @@ public:
     {
         int save_errno = errno;
         int msg = sig;
-        send(u_pipefd[1], (char*) &msg, 1, 0);
+        send(Utils::u_pipefd[1], (char*) &msg, 1, 0);
         errno = save_errno;
     }
 

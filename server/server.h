@@ -13,8 +13,9 @@
 #include<stdio.h>
 #include<time.h>
 #include<assert.h>
+#include "../instance/instance.h"
 
-#define MAX_FD 60000 // 最大文件描述符个数
+#define MAX_FD 65535 // 最大文件描述符个数
 #define MAX_EVENT_NUMBER 10000 //监听的最大事件数量
 #define FD_LIMIT 65535
 #define TIMESLOT 5
@@ -37,7 +38,7 @@ void cb_func(client_data * user_data)
 class server
 {
 public:
-    server(int port_);
+    server(int port_, const char* username, const char* password);
     ~server();
     void start();
 private:
@@ -50,11 +51,10 @@ private:
     void lsttimer(int, struct sockaddr_in);
 
     void addSig(int sig, void(handler)(int), bool restart);
-    // void deal_timer(util_timer* timer, int sockfd);
+    void deal_timer(util_timer* timer, int sockfd);
     void deal_signal(bool&, bool&);
 private:
     int port; // 端口号
-    // int pipefd[2]; // 管道
     
     threadpool<http_conn>* pool; // 线程池
     http_conn* users; // 创建一个数组保存所有客户端信息
@@ -63,14 +63,22 @@ private:
     epoll_event events[MAX_EVENT_NUMBER]; // 创建epoll对象，事件数组，添加
     int pipefd[2];
     int epollfd;
-    int sockfd;
     Utils utils;
 
     // 定时器
     client_data* users_timer;
+
+    // 数据库 
+    const char* sql_username;
+    const char* sql_password;
+    char* databaseName;
+    int sql_port;
+    int sql_num;
+    char* m_sqlurl; // mysql的ip
+    sql_conn_pool * conn_pool; // mysql连接池
 };
 
-server::server(int port_):port(port_)
+server::server(int port_, const char* username, const char* password):port(port_), sql_username(username), sql_password(password)
 {
     addSig(SIGPIPE, SIG_IGN, false);
     init_threadpool();
@@ -99,19 +107,24 @@ void server::start()
     {
         // -1表示阻塞, 0不阻塞
         int number = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
-        if (number < 0 && errno != EINTR)
+        if(number == -1)
         {
-            std::cout << "epoll fail" << std::endl;
-            break;
+            if(errno==EINTR) //epoll_wait会被SIGALRM信号中断返回-1
+            {
+                continue;
+            }
+            std::cout<<"epoll_wait failed ."<<std::endl;
+            exit(-1);
         }
         for (int i = 0; i < number; ++i)
         {
-            sockfd = events[i].data.fd;
+            int sockfd = events[i].data.fd;
             if (sockfd == listenfd)
             {
                 struct sockaddr_in client_address;
                 socklen_t client_addrlen = sizeof(client_address);
                 int connfd = accept(listenfd, (struct sockaddr*)&client_address, &client_addrlen);
+                printf("connfd : %d, listenfd : %d\n", connfd, listenfd);
                 if ( connfd < 0 ) { // 如果出现了错误
                     printf( "errno is: %d\n", errno);
                     continue;
@@ -133,7 +146,7 @@ void server::start()
             else if (events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
             {
                 users[sockfd].close_conn();
-                // deal_timer(timer, sockfd);
+                deal_timer(users_timer[sockfd].timer, sockfd);
             }
             else if ((sockfd == pipefd[0]) && (events[i].events & EPOLLIN))
             {
@@ -149,10 +162,12 @@ void server::start()
                 if (users[sockfd].read())
                 {
                     pool->append(users+sockfd);
+                    printf("add renwu\n");
                 }
                 else
                 {
-                    utils.timer_lst.del_timer(users_timer[sockfd].timer);
+                    // utils.timer_lst.del_timer(timer);
+                    deal_timer(timer, sockfd);
                     users[sockfd].close_conn(); // 读失败了
                 }
             }
@@ -161,7 +176,6 @@ void server::start()
                 // 一次性把所有数据写完
                 if (!users[sockfd].write())
                 {
-                    // utils.timer_lst.del_timer(users_timer[sockfd].timer);
                     users[sockfd].close_conn(); // 写失败了
                 }
             }
@@ -177,7 +191,6 @@ void server::start()
 // 创建线程池
 void server::init_threadpool()
 {
-    pool = NULL;
     try
     {
         pool = new threadpool<http_conn>;
@@ -198,6 +211,7 @@ void server::init_tcp()
     setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
     // 绑定ip和端口
+    memset(&address,0,sizeof(address));
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(port);
@@ -254,18 +268,18 @@ void server::addSig(int sig, void(handler)(int), bool restart)
     }
     // 设置临时阻塞的信号集
     sigfillset(&sa.sa_mask);
-    assert(sigaction(sig, &sa, NULL) != -1); // 捕捉sig信号
+    sigaction(sig, &sa, NULL); // 捕捉sig信号
 }
 
-// void server::deal_timer(util_timer* timer, int sockfd)
-// {
-//     timer->cb_func(&users_timer[sockfd]);
-//     if (timer)
-//     {
-//         printf("delete sockfd %d", sockfd);
-//         utils.timer_lst.del_timer(timer);
-//     }
-// }
+void server::deal_timer(util_timer* timer, int sockfd)
+{
+    timer->cb_func(&users_timer[sockfd]);
+    if (timer)
+    {
+        printf("delete sockfd %d", sockfd);
+        utils.timer_lst.del_timer(timer);
+    }
+}
 
 void server::deal_signal(bool& time_out, bool& stop_server)
 {
@@ -293,7 +307,7 @@ void server::deal_signal(bool& time_out, bool& stop_server)
                 case SIGTERM:
                 {
                     stop_server = true;
-                    break;
+                    // break;
                 }
             }
         }

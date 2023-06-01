@@ -29,7 +29,7 @@ void addfd(int epollfd, int fd, bool one_shot)
     event.data.fd = fd;
     // 不懂
     event.events = EPOLLIN | EPOLLRDHUP;
-    if (one_shot) 
+    if (one_shot)
     {
         event.events |= EPOLLONESHOT;
     }
@@ -62,7 +62,7 @@ void http_conn::init(int sockfd, const sockaddr_in& addr)
     // 添加到epoll对象中
     addfd(m_epollfd, m_sockfd, true);
     // 总用户数+1
-    ++m_user_count;
+    ++http_conn::m_user_count;
     init();
 }
 
@@ -74,7 +74,6 @@ void http_conn::init()
     m_read_idx = 0;
 
     m_method = GET;
-    m_url = 0;
     m_version = 0;
     m_content_length = 0;
     m_host = 0;
@@ -82,6 +81,7 @@ void http_conn::init()
     bytes_to_send = 0;
     bytes_have_send = 0; 
     m_write_idx = 0;
+    m_url = NULL;
     bzero(m_read_buff, READ_BUFFER_SIZE);
     bzero(m_write_buff, WRITE_BUFFER_SIZE);
     bzero(m_real_file, FILENAME_LEN);
@@ -187,6 +187,11 @@ http_conn::HTTP_CODE http_conn::prase_request_line(char * text)
     if (strcasecmp(method, "GET") == 0)
     {
         m_method = GET;
+    }
+    else if(strcasecmp(method,"post"))
+    {
+        m_method=POST;
+         
     }
     else
     {
@@ -407,7 +412,7 @@ bool http_conn::write()
     if (bytes_to_send == 0)
     {
         // 本次响应结束
-        modifyfd(m_epollfd, m_sockfd, EPOLLIN);
+        modifyfd(m_epollfd, m_sockfd, EPOLLIN|EPOLLONESHOT|EPOLLET);
         init();
         return true;
     }
@@ -420,7 +425,7 @@ bool http_conn::write()
             // 服务器无法立即接收到同一个客户的下一个请求，但可以保证连接的完整性
             if (errno == EAGAIN)
             {
-                modifyfd(m_epollfd, m_sockfd, EPOLLOUT);
+                modifyfd(m_epollfd, m_sockfd, EPOLLOUT|EPOLLONESHOT|EPOLLET);
                 return true;
             }
             unmap();
@@ -447,7 +452,7 @@ bool http_conn::write()
             // 无数据发送
             unmap();
             // 该线程重新负责起读事件
-            modifyfd(m_epollfd, m_sockfd, EPOLLIN);
+            modifyfd(m_epollfd, m_sockfd, EPOLLIN|EPOLLET|EPOLLONESHOT);
             // 如果是长连接的那就初始化
             if (m_linger)
             {
@@ -526,7 +531,7 @@ void http_conn::process()
     HTTP_CODE read_ret = process_read();
     if (read_ret == NO_REQUEST)
     {
-        modifyfd(m_epollfd, m_sockfd, EPOLLIN);
+        modifyfd(m_epollfd, m_sockfd, EPOLLIN|EPOLLONESHOT|EPOLLET);
         return;
     }
     // 生成响应
@@ -535,5 +540,5 @@ void http_conn::process()
     {
         close_conn();
     }
-    modifyfd(m_epollfd, m_sockfd, EPOLLOUT);
+    modifyfd(m_epollfd, m_sockfd, EPOLLOUT|EPOLLONESHOT|EPOLLET);
 }
