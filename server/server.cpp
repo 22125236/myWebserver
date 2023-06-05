@@ -67,13 +67,7 @@ void server::start()
             // 非listenfd
             else if (events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
             {
-                users[sockfd].close_conn();
-                // if (users_timer[sockfd].timer)
-                // {
-                //     printf("non listen\n");
-                //     deal_timer(users_timer[sockfd].timer, sockfd);
-                // }
-                // deal_timer(users_timer[sockfd].timer, sockfd);
+                deal_timer(users_timer[sockfd].timer, sockfd);
             }
             else if ((sockfd == pipefd[0]) && (events[i].events & EPOLLIN))
             {
@@ -100,10 +94,21 @@ void server::start()
             }
             else if (events[i].events & EPOLLOUT)
             {
+                util_timer* timer = users_timer[sockfd].timer;
                 // 一次性把所有数据写完
                 if (!users[sockfd].write())
                 {
-                    users[sockfd].close_conn();
+                    // users[sockfd].close_conn();
+                    deal_timer(timer, sockfd);
+                }
+                else
+                {
+                    if (timer)
+                    {
+                        time_t cur = time(NULL);
+                        timer->expire = cur + 3 * TIMESLOT;
+                        utils.timer_lst.adjust_timer(timer);
+                    }
                 }
             }
         }
