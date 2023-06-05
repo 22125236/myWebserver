@@ -86,7 +86,7 @@ bool threadpool<T>::append(T* request)
 {
     //同步
     m_queuelocker.lock();
-    if (m_workqueue.size() > m_max_requests)
+    if (m_workqueue.size() >= m_max_requests)
     {
         m_queuelocker.unlock();
         return false;
