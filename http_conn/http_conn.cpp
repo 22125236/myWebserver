@@ -11,8 +11,11 @@ const char* error_404_form = "The requested file was not found on this server.\n
 const char* error_500_title = "Internal Error";
 const char* error_500_form = "There was an unusual problem serving the requested file.\n";
 
+std::map<std::string, std::string> sql_users; // 用于获取所有用户的账户密码
+locker m_lock;
+
 // 网站的根目录
-const char* doc_root = "/home/wwy/resource";
+const char* doc_root = "/home/wwy/resource/pages";
 
 int setnonblocking( int fd ) {
     int old_option = fcntl( fd, F_GETFL );
@@ -79,7 +82,8 @@ void http_conn::init(int sockfd, const sockaddr_in& addr){
 
 void http_conn::init()
 {
-
+    mysql = NULL;
+    cgi = 0;
     bytes_to_send = 0;
     bytes_have_send = 0;
 
@@ -152,43 +156,67 @@ http_conn::LINE_STATUS http_conn::parse_line() {
 }
 
 // 解析HTTP请求行，获得请求方法，目标URL,以及HTTP版本号
-http_conn::HTTP_CODE http_conn::parse_request_line(char* text) {
-    // GET /index.html HTTP/1.1
-    m_url = strpbrk(text, " \t"); // 判断第二个参数中的字符哪个在text中最先出现
-    if (! m_url) { 
+http_conn::HTTP_CODE http_conn::parse_request_line(char * text) { // 解析请求首行+
+    // 解析HTTP请求行，获得请求方法，目标URL，HTTP版本
+    //    [m_url]
+    // GET      / HTTP/1.1
+    m_url = strpbrk(text, " \t"); // strpbrk是在源字符串（s1）中找出最先含有搜索字符串（s2）中任一字符的位置并返回，若找不到则返回空指针。
+    
+    if (!m_url) { // 如果这行没有肯定是有问题
         return BAD_REQUEST;
     }
-    // GET\0/index.html HTTP/1.1
-    *m_url++ = '\0';    // 置位空字符，字符串结束符
-    char* method = text;
-    if ( strcasecmp(method, "GET") == 0 ) { // 忽略大小写比较
-        m_method = GET;
-    } else {
+
+    // GET\0/ HTTP/1.1
+    *m_url++ = '\0'; // 封口
+    char * method = text;
+    // strcasecmp用忽略大小写比较字符串，通过strcasecmp函数可以指定每个字符串用于比较的字符数，
+    // strcasecmp用来比较参数s1和s2字符串前n个字符，比较时会自动忽略大小写的差异。
+    if (strcasecmp(method, "GET") == 0) {
+        m_method = GET; // 说明GET解析正确，然后赋值到任务
+    }else if (strcasecmp(method, "POST") == 0) {
+        m_method = POST;
+        cgi = 1; //启动cgi 说明改成检测模式
+    }else {
         return BAD_REQUEST;
     }
-    // /index.html HTTP/1.1
-    // 检索字符串 str1 中第一个不在字符串 str2 中出现的字符下标。
-    m_version = strpbrk( m_url, " \t" );
+    m_url += strspn(m_url, " \t");
+    // 获取HTTP协议版本     [m_url]
+    // /(这里可能有也可能没有)      HTTP/1.1
+    m_version = strpbrk(m_url, " \t");
     if (!m_version) {
         return BAD_REQUEST;
     }
     *m_version++ = '\0';
-    if (strcasecmp( m_version, "HTTP/1.1") != 0 ) {
+    m_version += strspn(m_version, " \t");
+    //                      [m_version]
+    // /(这里可能有也可能没有)\0    H      TTP/1.1
+    if (strcasecmp(m_version, "HTTP/1.1") != 0) {  // 这里没有存下协议的版本号 只是判断了
         return BAD_REQUEST;
     }
-    /**
-     * http://192.168.110.129:10000/index.html
-    */
-    if (strncasecmp(m_url, "http://", 7) == 0 ) {   
-        m_url += 7;
-        // 在参数 str 所指向的字符串中搜索第一次出现字符 c（一个无符号字符）的位置。
-        m_url = strchr( m_url, '/' );
+    // 如果版本号是正确的
+    // http://192.168.1.1:10000/index.html
+    
+    if (strncasecmp(m_url, "http://", 7) == 0) {
+        m_url += 7; // 到了这里 192.168.1.1:10000/index.html
+        // strchr函数功能为在一个串中查找给定字符的第一个匹配之处。
+        m_url = strchr(m_url, '/'); // /index.html
     }
-    if ( !m_url || m_url[0] != '/' ) {
+    // 这里添加一下https的解析
+    if (strncasecmp(m_url, "https://", 8) == 0)
+    {
+        m_url += 8;
+        m_url = strchr(m_url, '/');
+    }
+
+    if (!m_url || m_url[0] != '/') {
         return BAD_REQUEST;
     }
-    m_check_state = CHECK_STATE_HEADER; // 检查状态变成检查头
-    return NO_REQUEST;
+    if (strlen(m_url) == 1) {
+        strcat(m_url, "judge.html"); // 默认页面为judge.html 也就是指打ip地址的时候也显示这
+    }
+    m_check_state = CHECK_STATE_HEADER; // 主状态机检查状态变成检查请求头
+
+    return NO_REQUEST; // 还需要继续解析
 }
 
 // 解析HTTP请求的一个头部信息
@@ -231,6 +259,7 @@ http_conn::HTTP_CODE http_conn::parse_content( char* text ) {
     if ( m_read_idx >= ( m_content_length + m_checked_idx ) )
     {
         text[ m_content_length ] = '\0';
+        m_string = text;
         return GET_REQUEST;
     }
     return NO_REQUEST;
@@ -286,10 +315,127 @@ http_conn::HTTP_CODE http_conn::process_read() {
 // 映射到内存地址m_file_address处，并告诉调用者获取文件成功
 http_conn::HTTP_CODE http_conn::do_request()
 {
-    // "/home/nowcoder/webserver/resources"
+    // "/home/wwy/resource/pages"
     strcpy( m_real_file, doc_root );
     int len = strlen( doc_root );
-    strncpy( m_real_file + len, m_url, FILENAME_LEN - len - 1 );
+    
+    const char *p = strrchr(m_url, '/');
+    // 处理post请求
+    if (cgi == 1 && (*(p + 1) == '2' || *(p + 1) == '3'))
+    {
+
+        //根据标志判断是登录检测还是注册检测
+        char flag = m_url[1];
+
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real, "/");
+        strcat(m_url_real, m_url + 2);
+        strncpy(m_real_file + len, m_url_real, FILENAME_LEN - len - 1);
+        free(m_url_real);
+
+        //将用户名和密码提取出来
+        //user=wwy&password=123456
+        char name[100], password[100];
+        int i;
+        for (i = 5; m_string[i] != '&'; ++i)
+            name[i - 5] = m_string[i];
+        name[i - 5] = '\0';
+
+        int j = 0;
+        for (i = i + 10; m_string[i] != '\0'; ++i, ++j)
+            password[j] = m_string[i];
+        password[j] = '\0';
+        m_lock.lock();
+        sql_users.clear();
+        // 更新sql_users表
+        instance::GetInstance()->get_users_info(sql_users);
+        // 注册
+        if (*(p + 1) == '3')
+        {
+            // std::cout << sql_users.size() << "\n\n\n";
+            // 重名了
+            if (sql_users.find(name) != sql_users.end())
+            {
+                strcpy(m_url, "/registerError.html");
+            }
+            //没有重名的，进行增加数据
+            else
+            {
+                int res = instance::GetInstance()->insert_user(name, password);
+                
+                if (res == 0)
+                {
+                    strcpy(m_url, "/login.html");
+                    sql_users[name] = password;
+                }
+                else
+                {
+                    strcpy(m_url, "/registerError.html");
+                }
+            }
+        }
+        //如果是登录，直接判断
+        //若浏览器端输入的用户名和密码在表中可以查找到，返回1，否则返回0
+        else if (*(p + 1) == '2')
+        {
+            if (sql_users.find(name) != sql_users.end() && sql_users[name] == password)
+            {
+                strcpy(m_url, "/welcome.html");
+            } 
+            else
+            {
+                strcpy(m_url, "/loginError.html");
+            }
+        }
+        strncpy(m_real_file + len, m_url, strlen(m_url));
+        m_lock.unlock();
+    }
+    // 注册页面
+    else if (*(p + 1) == '0')
+    {
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real, "/register.html");
+        strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
+        free(m_url_real);
+    }
+    // 登录页面
+    else if (*(p + 1) == '1')
+    {
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real, "/login.html");
+        strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
+        free(m_url_real);
+    }
+    else if (*(p + 1) == '5')
+    {
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real, "/picture.html");
+        strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
+        free(m_url_real);
+    }
+    else if (*(p + 1) == '6')
+    {
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real, "/video.html");
+        strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
+        free(m_url_real);
+    }
+    else if (*(p + 1) == '7')
+    {
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real, "/fans.html");
+        strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
+        free(m_url_real);
+    }
+    else if (*(p + 1) == '8')
+    {
+        strncpy( m_real_file + len, m_url, FILENAME_LEN - len - 1 );
+    }
+    else 
+    {
+        // 正常请求 如 : ip:port/index.html
+        strncpy( m_real_file + len, m_url, FILENAME_LEN - len - 1 );
+    }
     // 获取m_real_file文件的相关的状态信息，-1失败，0成功
     if ( stat( m_real_file, &m_file_stat ) < 0 ) {
         return NO_RESOURCE;
@@ -299,12 +445,10 @@ http_conn::HTTP_CODE http_conn::do_request()
     if ( ! ( m_file_stat.st_mode & S_IROTH ) ) {
         return FORBIDDEN_REQUEST;
     }
-
     // 判断是否是目录
     if ( S_ISDIR( m_file_stat.st_mode ) ) {
         return BAD_REQUEST;
     }
-
     // 以只读方式打开文件
     int fd = open( m_real_file, O_RDONLY );
     // 创建内存映射

@@ -20,6 +20,11 @@
 #include <errno.h>
 #include "../locker/locker.h"
 #include <sys/uio.h>
+#include <unordered_map>
+#include <string>
+#include "../instance/instance.h"
+#include <mysql/mysql.h>
+#include <iostream>
 
 class http_conn
 {
@@ -120,6 +125,13 @@ private:
 
     int bytes_to_send;              // 将要发送的数据的字节数
     int bytes_have_send;            // 已经发送的字节数
+
+    std::string m_string; // 用于存储解析post中的内容
+    // 数据库相关
+    MYSQL * mysql;
+    std::string userName;
+    std::string passWord;
+    int cgi;        //是否启用的POST
 };
 
 #endif
