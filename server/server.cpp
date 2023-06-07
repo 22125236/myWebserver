@@ -22,100 +22,69 @@ server::~server()
     delete pool;
 }
 
-void server::start()
-{
-    bool time_out = false;
+void server::start(){
+    bool timeout = false;
     bool stop_server = false;
-    while (!stop_server)
-    {
-        // -1表示阻塞, 0不阻塞
-        int number = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
-        if(number == -1)
-        {
-            if(errno==EINTR) //epoll_wait会被SIGALRM信号中断返回-1
-            {
-                continue;
-            }
-            std::cout<<"epoll_wait failed ."<<std::endl;
-            exit(-1);
+    while (!stop_server) {
+        int num = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1); // num返回就绪事件的数量
+        if ((num < 0) && (errno != EINTR)) { // 如果错误为EINTR说明读是由中断引起的
+            printf("epoll failure\n");  // 调用epoll失败
+            break;
         }
-        for (int i = 0; i < number; ++i)
-        {
-            int sockfd = events[i].data.fd;
-            if (sockfd == listenfd)
-            {
-                struct sockaddr_in client_address;
+        // 循环遍历数组
+        for (int i = 0; i < num; ++i) {
+            int sockfd = events[i].data.fd;  // 获取当前事件的文件描述符
+            if (sockfd == listenfd) {// 有客户端连接
+                // 初始化用户信息准备接收socket
+                struct sockaddr_in client_address; // ipv4 socket地址
                 socklen_t client_addrlen = sizeof(client_address);
+                // 接收socket
                 int connfd = accept(listenfd, (struct sockaddr*)&client_address, &client_addrlen);
+                // 因为ET模式 所以设置connfd为非阻塞模式
                 if ( connfd < 0 ) { // 如果出现了错误
                     printf( "errno is: %d\n", errno);
                     continue;
-                }
-                // 连接数满了
-                if (http_conn::m_user_count >= MAX_FD)
-                {
+                } 
+
+                if (http_conn::m_user_count >= MAX_FD) {
+                    // 目前连接数满了
+                    // 给客户端写一个信息：服务器正忙。
                     const char* meg = "Severs is busy!!";
-                    //给客户端写信息 -- 服务器忙
-                    send(sockfd, meg, strlen(meg), 0);
+                    // 发送套接字
+                    send(sockfd, meg, strlen( meg ), 0 );
                     close(connfd);
                     continue;
                 }
-                // 将新的客户数据初始化放入数组中
+                
+                // 将新的客户的数据初始化，放到数组中[connfd根据连接数量递增，所以直接用作数组的索引]
                 users[connfd].init(connfd, client_address);
-                lsttimer(connfd, client_address);
-            }
-            // 非listenfd
-            else if (events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
-            {
-                deal_timer(users_timer[sockfd].timer, sockfd);
-            }
-            else if ((sockfd == pipefd[0]) && (events[i].events & EPOLLIN))
-            {
-                deal_signal(time_out, stop_server);
-            }
-            else if (events[i].events & EPOLLIN)
-            {
-                util_timer* timer = users_timer[sockfd].timer;
-                // 一次性把所有数据读完
-                if (users[sockfd].read())
-                {
-                    pool->append(users+sockfd);
-                    if (timer)
-                    {
-                        time_t cur = time(NULL);
-                        timer->expire = cur + 3 * TIMESLOT;
-                        utils.timer_lst.adjust_timer(timer);
-                    }     
+                lsttimer(connfd, client_address); // 绑定定时器
+            }else if (events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
+                // 对方异常断开或者错误等事件
+                users[sockfd].close_conn();
+                // 定时器相关
+                util_timer *timer = users_timer[sockfd].timer;
+                deal_timer(timer, sockfd); // 删除定时器
+            }else if ((sockfd == pipefd[0]) && (events[i].events & EPOLLIN)){ // 处理信号
+                deal_signal(timeout, stop_server);
+            }else if (events[i].events & EPOLLIN) { // 查看第i个事件是否就绪读
+                // oneshot模式需要一次性全部读完
+                if (users[sockfd].read()) {  // 开始读
+                    pool->append(users + sockfd); // 加入到线程池任务
+                }else { // 读取失败
+                    users[sockfd].close_conn();
                 }
-                else
-                {
-                    deal_timer(timer, sockfd);
-                }
-            }
-            else if (events[i].events & EPOLLOUT)
-            {
-                util_timer* timer = users_timer[sockfd].timer;
-                // 一次性把所有数据写完
-                if (!users[sockfd].write())
-                {
-                    // users[sockfd].close_conn();
-                    deal_timer(timer, sockfd);
-                }
-                else
-                {
-                    if (timer)
-                    {
-                        time_t cur = time(NULL);
-                        timer->expire = cur + 3 * TIMESLOT;
-                        utils.timer_lst.adjust_timer(timer);
-                    }
+            }else if (events[i].events & EPOLLOUT) { // 查看第i个事件是否就绪写
+                if (!users[sockfd].write()) { // 没有成功一次性写完所有数据
+                    users[sockfd].close_conn();
                 }
             }
         }
-        if (time_out)
+        // 处理完所有的epoll事件 再处理过期的定时器任务
+        if (timeout)
         {
             utils.timer_handler(); // 处理过期的定时器，任务重置定时器时间
-            time_out = false; // 重新恢复状态
+            timeout = false; // 重新恢复状态
         }
     }
 }
