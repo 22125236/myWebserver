@@ -1,6 +1,7 @@
 #pragma once
 #include "sql_conn/sql_conn_pool.h"
 #include<map>
+#include "../log/log.h"
 
 class instance
 {

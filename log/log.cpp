@@ -22,7 +22,7 @@ log* log::getInstance()
 
 void* log::flush_log_thread(void* args)
 {
-    
+    log::getInstance()->async_write_log();
 }
 
 bool log::init(
@@ -174,5 +174,13 @@ void log::flush()
 
 void *log::async_write_log()
 {
-    
+    std::string single_log;
+    while(!m_stop)
+    {
+        m_logstat.wait();
+        m_lock.lock();
+        m_log_queue->pop(single_log);
+        fputs(single_log.c_str(), fp);
+        m_lock.unlock();
+    }
 }

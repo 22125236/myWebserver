@@ -7,6 +7,7 @@
 #include <string>
 #include "../../locker/locker.h"
 #include <error.h>
+#include "../../log/log.h"
 
 class sql_conn_pool
 {

@@ -14,6 +14,7 @@
 #include<time.h>
 #include<assert.h>
 #include "../instance/instance.h"
+#include "../log/log.h"
 
 #define MAX_FD 65535 // 最大文件描述符个数
 #define MAX_EVENT_NUMBER 10000 //监听的最大事件数量

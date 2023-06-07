@@ -25,6 +25,7 @@
 #include "../instance/instance.h"
 #include <mysql/mysql.h>
 #include <iostream>
+#include "../log/log.h"
 
 class http_conn
 {

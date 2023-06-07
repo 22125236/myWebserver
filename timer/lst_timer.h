@@ -10,6 +10,7 @@
 #include<signal.h>
 #include<stdio.h>
 #include<string.h>
+#include "../log/log.h"
 
 // #define BUFFER_SIZE 64
 class util_timer;

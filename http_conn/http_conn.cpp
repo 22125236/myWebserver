@@ -46,7 +46,7 @@ void removefd( int epollfd, int fd ) {
 }
 
 // 修改文件描述符，重置socket上的EPOLLONESHOT事件，以确保下一次可读时，EPOLLIN事件能被触发
-void modfd(int epollfd, int fd, int ev) {
+void modifyfd(int epollfd, int fd, int ev) {
     epoll_event event;
     event.data.fd = fd;
     event.events = ev | EPOLLET | EPOLLONESHOT | EPOLLRDHUP;
@@ -473,7 +473,7 @@ bool http_conn::write()
     
     if ( bytes_to_send == 0 ) {
         // 将要发送的字节为0，这一次响应结束。
-        modfd( m_epollfd, m_sockfd, EPOLLIN ); 
+        modifyfd( m_epollfd, m_sockfd, EPOLLIN ); 
         init();
         return true;
     }
@@ -485,7 +485,7 @@ bool http_conn::write()
             // 如果TCP写缓冲没有空间，则等待下一轮EPOLLOUT事件，虽然在此期间，
             // 服务器无法立即接收到同一客户的下一个请求，但可以保证连接的完整性。
             if( errno == EAGAIN ) {
-                modfd( m_epollfd, m_sockfd, EPOLLOUT );
+                modifyfd(m_epollfd, m_sockfd, EPOLLOUT);
                 return true;
             }
             unmap();
@@ -511,7 +511,7 @@ bool http_conn::write()
         {
             // 没有数据要发送了
             unmap();
-            modfd(m_epollfd, m_sockfd, EPOLLIN);
+            modifyfd(m_epollfd, m_sockfd, EPOLLIN);
 
             if (m_linger)
             {
@@ -639,7 +639,7 @@ void http_conn::process() {
     // 解析HTTP请求
     HTTP_CODE read_ret = process_read();
     if ( read_ret == NO_REQUEST ) {
-        modfd( m_epollfd, m_sockfd, EPOLLIN );
+        modifyfd( m_epollfd, m_sockfd, EPOLLIN );
         return;
     }
     
@@ -648,5 +648,5 @@ void http_conn::process() {
     if ( !write_ret ) {
         close_conn();
     }
-    modfd( m_epollfd, m_sockfd, EPOLLOUT);
+    modifyfd( m_epollfd, m_sockfd, EPOLLOUT);
 }
