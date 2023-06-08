@@ -20,7 +20,7 @@ public:
     static sql_conn_pool* GetInstance();
 
     void init(std::string url, std::string user, std::string password, 
-                    std::string databaseName, int port, int MaxConn);
+                    std::string databaseName, int port, int MaxConn, int close_log);
     int freeConn_num;   // 当前空闲数
 
 private:
@@ -39,6 +39,8 @@ public:
     std::string m_user;     // 登陆数据库用户名
     std::string m_password;             // 登陆数据库密码
     std::string m_databaseName;         // 使用数据库名
+
+    int m_close_log;
 };
 
 class connectionRAII{

@@ -39,7 +39,7 @@ void sort_timer_lst::add_timer(util_timer* timer)
 
 void sort_timer_lst::adjust_timer(util_timer* timer)
 {
-    printf("adjust timer\n");
+    // printf("adjust timer\n");
     if (!timer)
     {
         return;
@@ -67,7 +67,7 @@ void sort_timer_lst::adjust_timer(util_timer* timer)
 
 void sort_timer_lst::del_timer(util_timer* timer)
 {
-    printf("delete timer\n");
+    // printf("delete timer\n");
     if (!timer)
     {
         return;
@@ -105,7 +105,7 @@ void sort_timer_lst::tick()
     {
         return;
     }
-    printf("time tick\n");
+    // printf("time tick\n");
     time_t cur = time(NULL); // 获取当前时间
     util_timer* tmp = head;
     while (tmp != NULL)

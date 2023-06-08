@@ -7,7 +7,7 @@ class instance
 {
 public:
     static instance *GetInstance();
-    void init(std::string username, std::string password, std::string databaseName);
+    void init(std::string username, std::string password, std::string databaseName, int close_log);
     void get_users_info(std::map<std::string, std::string> &usersInfo);
     int insert_user(std::string username, std::string password);
 private:
@@ -21,5 +21,7 @@ private:
     std::string sql_password;   // 登陆数据库密码
     std::string sql_databaseName; // 数据库名字
     int sql_conn_num; //sql连接池大小
+
+    int m_close_log;
 
 };

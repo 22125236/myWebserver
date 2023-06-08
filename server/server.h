@@ -41,6 +41,7 @@ private:
     void init_epoll();
     void init_pipe();
     void init_sql();
+    void init_log();
     // 功能
     void lsttimer(int, struct sockaddr_in);
 
@@ -70,4 +71,8 @@ private:
     int sql_num;
     char* m_sqlurl; // mysql的ip
     sql_conn_pool * conn_pool; // mysql连接池
+    
+    // 日志
+    int m_close_log;  // 用于控制是否开关日志系统 0 : 启用
+    int m_asny; // 如果是0 则代表同步日志，如果大于0 则说明是异步日志中队列的长度
 };

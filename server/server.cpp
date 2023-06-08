@@ -3,6 +3,7 @@
 server::server(int port_, const char* username, const char* password):port(port_), sql_username(username), sql_password(password), databaseName("webserver")
 {
     addSig(SIGPIPE, SIG_IGN, false);
+    init_log();
     init_threadpool();
     init_sql();
     init_tcp();
@@ -28,7 +29,7 @@ void server::start(){
     while (!stop_server) {
         int num = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1); // num返回就绪事件的数量
         if ((num < 0) && (errno != EINTR)) { // 如果错误为EINTR说明读是由中断引起的
-            printf("epoll failure\n");  // 调用epoll失败
+            LOG_ERROR("%s", "epoll failure");
             break;
         }
         // 循环遍历数组
@@ -42,7 +43,7 @@ void server::start(){
                 int connfd = accept(listenfd, (struct sockaddr*)&client_address, &client_addrlen);
                 // 因为ET模式 所以设置connfd为非阻塞模式
                 if ( connfd < 0 ) { // 如果出现了错误
-                    printf( "errno is: %d\n", errno);
+                    LOG_ERROR("errno is: %d\n", errno);
                     continue;
                 } 
 
@@ -65,12 +66,18 @@ void server::start(){
                 // 定时器相关
                 util_timer *timer = users_timer[sockfd].timer;
                 deal_timer(timer, sockfd); // 删除定时器
+                LOG_INFO("delete sockfd %d timer", sockfd);
             }else if ((sockfd == pipefd[0]) && (events[i].events & EPOLLIN)){ // 处理信号
                 deal_signal(timeout, stop_server);
             }else if (events[i].events & EPOLLIN) { // 查看第i个事件是否就绪读
                 // oneshot模式需要一次性全部读完
+                util_timer *timer = users_timer[sockfd].timer;
                 if (users[sockfd].read()) {  // 开始读
                     pool->append(users + sockfd); // 加入到线程池任务
+                    if (timer)
+                    {
+                        utils.timer_lst.adjust_timer(timer);
+                    }
                 }else { // 读取失败
                     users[sockfd].close_conn();
                 }
@@ -87,6 +94,13 @@ void server::start(){
             timeout = false; // 重新恢复状态
         }
     }
+}
+
+void server::init_log()
+{
+    m_close_log = 0;
+    m_asny = 800;
+    log::getInstance()->init("./myServerLog", m_close_log, 2000, 5000000, m_asny);
 }
 
 // 创建线程池
@@ -145,8 +159,7 @@ void server::init_pipe()
 void server::init_sql()
 {
     instance* corm = instance::GetInstance();
-    corm->init(sql_username, sql_password, databaseName);
-    printf("connect sql success\n");
+    corm->init(sql_username, sql_password, databaseName, m_close_log);
 }
 
 void server::lsttimer(int connfd, struct sockaddr_in client_address)
@@ -185,7 +198,7 @@ void server::deal_timer(util_timer* timer, int sockfd)
     timer->cb_func(&users_timer[sockfd]);
     if (timer)
     {
-        printf("delete sockfd %d\n", sockfd);
+        LOG_INFO("delete sockfd %d", sockfd)
         utils.timer_lst.del_timer(timer);
     }
 }

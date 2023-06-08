@@ -1,4 +1,9 @@
+#include <string.h>
+#include <time.h>
+#include <sys/time.h>
+#include <stdarg.h>
 #include "log.h"
+#include <pthread.h>
 
 log::log()
 {
@@ -12,17 +17,6 @@ log::~log()
     {
         fclose(fp);
     }
-}
-
-log* log::getInstance()
-{
-    static log obj;
-    return &obj;
-}
-
-void* log::flush_log_thread(void* args)
-{
-    log::getInstance()->async_write_log();
 }
 
 bool log::init(
@@ -164,23 +158,10 @@ void log::write_log(int level, const char* format, ...)
     va_end(valst); // 结束
 }
 
-void log::flush()
+void log::flush(void)
 {
     m_lock.lock();
     // 强制刷新写入流缓冲区
     fflush(fp);
     m_lock.unlock();
-}
-
-void *log::async_write_log()
-{
-    std::string single_log;
-    while(!m_stop)
-    {
-        m_logstat.wait();
-        m_lock.lock();
-        m_log_queue->pop(single_log);
-        fputs(single_log.c_str(), fp);
-        m_lock.unlock();
-    }
 }

@@ -12,15 +12,16 @@ instance* instance::GetInstance()
     return &obj;
 }
 
-void instance::init(std::string username, std::string password, std::string databaseName)
+void instance::init(std::string username, std::string password, std::string databaseName, int close_log)
 {
     sql_username = username;
     sql_password = password;
     sql_databaseName = databaseName;
     sql_port = 3306;
     sql_conn_num = 8;
+    m_close_log = close_log;
     conn_pool = sql_conn_pool::GetInstance();
-    conn_pool->init("localhost", sql_username, sql_password, sql_databaseName, sql_port, sql_conn_num);
+    conn_pool->init("localhost", sql_username, sql_password, sql_databaseName, sql_port, sql_conn_num, m_close_log);
 }
 
 int instance::insert_user(std::string username, std::string password)
@@ -43,7 +44,7 @@ void instance::get_users_info(std::map<std::string, std::string> &usersInfo)
     MYSQL * mysql = NULL;
     connectionRAII mysqlRAII(mysql, conn_pool);
     if (mysql_query(mysql, "SELECT username, password FROM user")){
-        printf("SELECT error:%s\n", mysql_error(mysql));
+        LOG_ERROR("SELECT error:%s", mysql_error(mysql));
     }
 
     // 通过句柄从表中检索完整的结果集

@@ -18,26 +18,27 @@ sql_conn_pool * sql_conn_pool::GetInstance() {
 }
 
 void sql_conn_pool::init(std::string url, std::string user, std::string password, 
-                    std::string databaseName, int port, int MaxConn)
+                    std::string databaseName, int port, int MaxConn, int close_log)
 {
     m_url = url;
     m_port = port;
     m_user = user;
     m_password = password;
     m_databaseName = databaseName;
+    m_close_log = close_log;
 
     for (int i = 0; i < MaxConn; ++i)
     {
         MYSQL* conn = NULL;
         conn = mysql_init(conn); // 初始化MYSQL句柄
         if (conn == NULL) { // 没有成功打开mysql
-            printf("Init MySQL Error!");
+            LOG_ERROR("%s", "Init MySQL Error!");
             exit(-1);
         }
         conn = mysql_real_connect(conn, url.c_str(), user.c_str(), 
                 password.c_str(), databaseName.c_str(), port, NULL, 0); // 连接MySQL
         if (conn == NULL) {
-            printf("Connection MySQL Error!");
+            LOG_ERROR("%s", "Connection MySQL Error!");
             exit(-1);
         } 
         connList.push_back(conn);
